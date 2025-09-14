@@ -33,15 +33,14 @@ print(sh.flush())  # Get the output
 
 # Wait for command completion
 sh.typeenter("echo 'Processing...'; sleep 2; echo 'Done'")
-sh.wait()  # Wait until command finishes
+sh.wait()  # Blocks until command finishes
 print(sh.flush())
 
 # Wait with timeout
 sh.typeenter("sleep 10")
-completed = sh.wait(3)  # Wait max 3 seconds
-if not completed:
-    print("Command timed out!")
-    sh.stop()  # Stop the long-running command
+sh.wait(3)  # Blocks for max 3 seconds then returns
+# After timeout, command may still be running
+sh.stop()  # Stop the long-running command
 
 # Blocking mode - waits for command completion
 sh.setblocking(True)
@@ -81,10 +80,9 @@ Send a command to the shell. By default, returns immediately without waiting for
 Retrieve new output since the last flush. Returns only unread output.
 
 ### `wait(seconds=None)`
-Wait for the current command to complete.
+Block until the current command completes or timeout is reached.
 - `seconds=None`: Wait indefinitely until command completes (default)
-- `seconds=float`: Maximum time to wait in seconds
-- Returns `True` if command completed, `False` if timeout occurred
+- `seconds=float`: Maximum time to wait in seconds before returning
 
 ### `setblocking(blocking)`
 Set blocking mode for `typeenter()`.

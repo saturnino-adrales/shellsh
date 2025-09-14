@@ -106,9 +106,6 @@ class ShellSh:
         Args:
             seconds (float, optional): Maximum time to wait in seconds.
                                       If None, waits indefinitely until command completes.
-
-        Returns:
-            bool: True if command completed, False if timeout occurred
         """
         if not self.running:
             raise RuntimeError("Shell process has terminated")
@@ -116,21 +113,31 @@ class ShellSh:
         idle_threshold = 0.5  # Consider command done after 0.5 seconds of no output
         start_time = time.time()
 
-        # Give initial time for command to start producing output
-        time.sleep(0.1)
+        # Wait a bit for the command to start executing
+        time.sleep(0.2)
+
+        # Mark initial output time to avoid premature return
+        with self.buffer_lock:
+            command_start_time = self.last_output_time
 
         while True:
             with self.buffer_lock:
-                time_since_output = time.time() - self.last_output_time
+                current_last_output = self.last_output_time
+                time_since_output = time.time() - current_last_output
 
-            # If no output for idle_threshold seconds, assume command is done
-            if time_since_output > idle_threshold:
-                return True
+            # Only consider idle if we've seen output after the command started
+            if current_last_output > command_start_time:
+                if time_since_output > idle_threshold:
+                    return  # Command completed
+
+            # Also check if enough time has passed without any new output
+            elif (time.time() - start_time) > 1.0 and time_since_output > idle_threshold:
+                return  # Command likely completed without output
 
             # Check timeout if specified
             if seconds is not None:
                 if (time.time() - start_time) >= seconds:
-                    return False  # Timeout occurred
+                    return  # Timeout reached
 
             time.sleep(0.05)  # Small sleep to avoid busy waiting
 
@@ -179,26 +186,30 @@ if __name__ == "__main__":
 
     print("\n=== Using wait() method ===")
     # Start a long-running command
-    sh.typeenter("echo 'Processing...'; sleep 3; echo 'Finished!'")
+    sh.typeenter("echo 'Processing...'; sleep 2; echo 'Finished!'")
     print("Command started, waiting for completion...")
 
-    # Wait indefinitely for command to complete
-    completed = sh.wait()
-    print(f"Command completed: {completed}")
+    # Wait indefinitely for command to complete (blocks)
+    sh.wait()
+    print("Command completed!")
     print("Output:", sh.flush())
 
     # Start another command and wait with timeout
     print("\n=== Using wait() with timeout ===")
-    sh.typeenter("echo 'Long task...'; sleep 10; echo 'Finally done!'")
+    sh.typeenter("echo 'Long task...'; sleep 5; echo 'Finally done!'")
     print("Started long task, waiting max 2 seconds...")
 
-    # Wait max 2 seconds
-    completed = sh.wait(2)
-    if completed:
-        print("Command completed within timeout")
-    else:
-        print("Timeout reached, command still running")
-        sh.stop()  # Stop the long-running command
+    # Wait max 2 seconds (blocks for up to 2 seconds)
+    start = time.time()
+    sh.wait(2)
+    elapsed = time.time() - start
+    print(f"wait() returned after {elapsed:.1f} seconds")
+
+    # Check if command is still running by looking at output
+    output = sh.flush()
+    if "Finally done!" not in output:
+        print("Command still running after timeout, stopping it...")
+        sh.stop()
         time.sleep(0.5)
     print("Output so far:", sh.flush())
 
