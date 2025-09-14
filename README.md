@@ -5,6 +5,7 @@ A Python library for managing persistent shell sessions programmatically with no
 ## Features
 
 - **Non-blocking command execution** - Commands return immediately without waiting for completion
+- **Flexible waiting** - Wait for command completion with optional timeouts using `wait()`
 - **Persistent shell sessions** - Maintain environment variables, working directory, and state between commands
 - **Real-time output streaming** - Capture output from long-running processes incrementally
 - **Interactive program support** - Works with curses-based programs like `top`, `vim`, etc.
@@ -30,6 +31,18 @@ sh.typeenter("ls -la")
 time.sleep(0.5)
 print(sh.flush())  # Get the output
 
+# Wait for command completion
+sh.typeenter("echo 'Processing...'; sleep 2; echo 'Done'")
+sh.wait()  # Wait until command finishes
+print(sh.flush())
+
+# Wait with timeout
+sh.typeenter("sleep 10")
+completed = sh.wait(3)  # Wait max 3 seconds
+if not completed:
+    print("Command timed out!")
+    sh.stop()  # Stop the long-running command
+
 # Blocking mode - waits for command completion
 sh.setblocking(True)
 sh.typeenter("sleep 2; echo 'Done'")  # This will block for ~2 seconds
@@ -44,7 +57,7 @@ print(sh.flush())
 # Environment persists between commands
 sh.typeenter("cd /tmp")
 sh.typeenter("pwd")
-time.sleep(0.5)
+sh.wait()
 print(sh.flush())  # Prints: /tmp
 
 # Stop long-running commands
@@ -66,6 +79,12 @@ Send a command to the shell. By default, returns immediately without waiting for
 
 ### `flush()`
 Retrieve new output since the last flush. Returns only unread output.
+
+### `wait(seconds=None)`
+Wait for the current command to complete.
+- `seconds=None`: Wait indefinitely until command completes (default)
+- `seconds=float`: Maximum time to wait in seconds
+- Returns `True` if command completed, `False` if timeout occurred
 
 ### `setblocking(blocking)`
 Set blocking mode for `typeenter()`.
