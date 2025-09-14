@@ -110,34 +110,33 @@ class ShellSh:
         if not self.running:
             raise RuntimeError("Shell process has terminated")
 
-        idle_threshold = 0.5  # Consider command done after 0.5 seconds of no output
         start_time = time.time()
 
-        # Wait a bit for the command to start executing
-        time.sleep(0.2)
+        # Generate unique marker
+        marker_id = int(start_time * 1000000)  # Unique ID based on microseconds
+        marker_text = f'SHELLSH_WAIT_MARKER_{marker_id}_COMPLETE'
+        marker_cmd = f"echo '{marker_text}'"
 
-        # Mark initial output time to avoid premature return
-        with self.buffer_lock:
-            command_start_time = self.last_output_time
+        # Send the marker command - it will execute after any currently running command
+        os.write(self.master, (marker_cmd + '\n').encode())
 
+        # Wait for the marker OUTPUT (not the command echo) to appear
         while True:
-            with self.buffer_lock:
-                current_last_output = self.last_output_time
-                time_since_output = time.time() - current_last_output
-
-            # Only consider idle if we've seen output after the command started
-            if current_last_output > command_start_time:
-                if time_since_output > idle_threshold:
-                    return  # Command completed
-
-            # Also check if enough time has passed without any new output
-            elif (time.time() - start_time) > 1.0 and time_since_output > idle_threshold:
-                return  # Command likely completed without output
-
             # Check timeout if specified
             if seconds is not None:
                 if (time.time() - start_time) >= seconds:
+                    # Send Ctrl+C to cancel the waiting marker command
+                    os.write(self.master, b'\x03')
+                    time.sleep(0.1)  # Give time for Ctrl+C to process
                     return  # Timeout reached
+
+            # Check if marker OUTPUT appeared (look for it after newline to ensure it's output)
+            with self.buffer_lock:
+                full_output = ''.join(self.output_buffer)
+
+            # Look for the marker text as output (preceded by newline or at start)
+            if f'\n{marker_text}' in full_output or full_output.startswith(marker_text):
+                return  # Previous command completed, marker executed
 
             time.sleep(0.05)  # Small sleep to avoid busy waiting
 

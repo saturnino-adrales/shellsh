@@ -7,7 +7,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="shellsh",
-    version="0.3.1",
+    version="0.3.2",
     author="Saturnino Adrales",
     author_email="your.email@example.com",
     description="A Python library for managing persistent shell sessions programmatically",
