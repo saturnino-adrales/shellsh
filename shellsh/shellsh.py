@@ -14,6 +14,7 @@ class ShellSh:
         self.running = True
         self.blocking = False  # Default to non-blocking mode
         self.last_output_time = time.time()  # Track when we last received output
+        self._waiting_marker = None  # Track pending marker for is_alive()
 
         # Create pseudo-terminal for proper terminal emulation
         self.master, self.slave = pty.openpty()
@@ -58,6 +59,12 @@ class ShellSh:
 
         # Write command to master fd
         os.write(self.master, (line + '\n').encode())
+
+        # Immediately send a marker to track when this command completes
+        marker_id = int(time.time() * 1000000)
+        self._waiting_marker = f'SHELLSH_MARKER_{marker_id}_DONE'
+        marker_cmd = f"echo '{self._waiting_marker}'"
+        os.write(self.master, (marker_cmd + '\n').encode())
 
         # If in blocking mode, wait for command to complete
         if self.blocking:
@@ -112,23 +119,18 @@ class ShellSh:
 
         start_time = time.time()
 
-        # Generate unique marker
-        marker_id = int(start_time * 1000000)  # Unique ID based on microseconds
-        marker_text = f'SHELLSH_WAIT_MARKER_{marker_id}_COMPLETE'
-        marker_cmd = f"echo '{marker_text}'"
+        # Use existing marker if available, otherwise we don't have a command to wait for
+        if self._waiting_marker is None:
+            return  # No command to wait for
 
-        # Send the marker command - it will execute after any currently running command
-        os.write(self.master, (marker_cmd + '\n').encode())
+        marker_text = self._waiting_marker
 
         # Wait for the marker OUTPUT (not the command echo) to appear
         while True:
             # Check timeout if specified
             if seconds is not None:
                 if (time.time() - start_time) >= seconds:
-                    # Send Ctrl+C to cancel the waiting marker command
-                    os.write(self.master, b'\x03')
-                    time.sleep(0.1)  # Give time for Ctrl+C to process
-                    return  # Timeout reached
+                    return  # Timeout reached, marker stays pending
 
             # Check if marker OUTPUT appeared (look for it after newline to ensure it's output)
             with self.buffer_lock:
@@ -136,9 +138,35 @@ class ShellSh:
 
             # Look for the marker text as output (preceded by newline or at start)
             if f'\n{marker_text}' in full_output or full_output.startswith(marker_text):
+                self._waiting_marker = None  # Clear marker, command completed
                 return  # Previous command completed, marker executed
 
             time.sleep(0.05)  # Small sleep to avoid busy waiting
+
+    def is_alive(self):
+        """Check if a command is currently running
+
+        Returns:
+            bool: True if a command is still running, False if completed
+        """
+        if not self.running:
+            return False
+
+        # If there's no waiting marker, no command was tracked
+        if self._waiting_marker is None:
+            return False
+
+        # Check if the marker has appeared in output
+        with self.buffer_lock:
+            full_output = ''.join(self.output_buffer)
+
+        # If marker appeared, command is done
+        if f'\n{self._waiting_marker}' in full_output or full_output.startswith(self._waiting_marker):
+            self._waiting_marker = None  # Clear marker
+            return False
+
+        # Marker hasn't appeared yet, command still running
+        return True
 
     def stop(self):
         """Kill the currently running command (send Ctrl+C)"""

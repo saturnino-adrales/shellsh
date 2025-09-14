@@ -5,6 +5,7 @@ A Python library for managing persistent shell sessions programmatically with no
 ## Features
 
 - **Non-blocking command execution** - Commands return immediately without waiting for completion
+- **Command status tracking** - Check if commands are still running with `is_alive()`
 - **Flexible waiting** - Wait for command completion with optional timeouts using `wait()`
 - **Persistent shell sessions** - Maintain environment variables, working directory, and state between commands
 - **Real-time output streaming** - Capture output from long-running processes incrementally
@@ -36,11 +37,12 @@ sh.typeenter("echo 'Processing...'; sleep 2; echo 'Done'")
 sh.wait()  # Blocks until command finishes
 print(sh.flush())
 
-# Wait with timeout
-sh.typeenter("sleep 10")
-sh.wait(3)  # Blocks for max 3 seconds then returns
-# After timeout, command may still be running
-sh.stop()  # Stop the long-running command
+# Check if command is running
+sh.typeenter("sleep 5")
+print(sh.is_alive())  # True - command is running
+sh.wait(2)  # Wait 2 seconds
+print(sh.is_alive())  # True - still running after timeout
+sh.stop()  # Stop the command
 
 # Blocking mode - waits for command completion
 sh.setblocking(True)
@@ -83,6 +85,12 @@ Retrieve new output since the last flush. Returns only unread output.
 Block until the current command completes or timeout is reached.
 - `seconds=None`: Wait indefinitely until command completes (default)
 - `seconds=float`: Maximum time to wait in seconds before returning
+- Note: Timeout does not kill the command, it just stops waiting
+
+### `is_alive()`
+Check if a command is currently running.
+- Returns `True` if a command is still executing
+- Returns `False` if the last command has completed or no command was run
 
 ### `setblocking(blocking)`
 Set blocking mode for `typeenter()`.
